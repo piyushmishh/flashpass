@@ -1,0 +1,193 @@
+# ───────────────────────────────────────────────────────────────
+#  FlashPass — Docker Compose
+#  Spins up the entire distributed stack with a single command:
+#    docker-compose up --build
+# ───────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+services:
+  # ──────────────── PostgreSQL ────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: flashpass-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: flashpass
+      POSTGRES_USER: flashpass_admin
+      POSTGRES_PASSWORD: supersecret_fp_2026
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Run the initial migration automatically on first boot
+      - ./backend/src/database/migrations/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flashpass_admin -d flashpass"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ──────────────── Redis ────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: flashpass-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ──────────────── Zookeeper (Kafka dependency) ────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: flashpass-zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  # ──────────────── Apache Kafka ────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: flashpass-kafka
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ──────────────── Backend API Server ────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: flashpass-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: flashpass
+      POSTGRES_USER: flashpass_admin
+      POSTGRES_PASSWORD: supersecret_fp_2026
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: flashpass-backend
+      JWT_SECRET: change-me-to-a-real-secret-in-production-please
+      JWT_EXPIRY: 24h
+      RESERVATION_TTL_SECONDS: 600
+      MAX_TICKETS_PER_USER: 2
+    volumes:
+      - ./backend/src:/app/src  # hot-reload in dev
+
+  # ──────────────── Background Workers ────────────────
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: flashpass-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    command: ["node", "dist/workers/index.js"]
+    environment:
+      NODE_ENV: development
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: flashpass
+      POSTGRES_USER: flashpass_admin
+      POSTGRES_PASSWORD: supersecret_fp_2026
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: flashpass-worker
+      JWT_SECRET: change-me-to-a-real-secret-in-production-please
+      RESERVATION_TTL_SECONDS: 600
+
+  # ──────────────── Frontend (React + Vite) ────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: flashpass-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+  # ──────────────── Prometheus (Metrics Scraper) ────────────────
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: flashpass-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - promdata:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+
+  # ──────────────── Grafana (Visualization) ────────────────
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: flashpass-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: flashpass
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/flashpass.json
+    volumes:
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+      - grafanadata:/var/lib/grafana
+
+volumes:
+  pgdata:
+  redisdata:
+  promdata:
+  grafanadata:

@@ -1,0 +1,147 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base layer overrides ─────────────────────────────────────────── */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Sleek custom scrollbar for the whole app */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0F172A;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+
+  /* Firefox scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #334155 #0F172A;
+  }
+}
+
+/* ── Reusable component classes ───────────────────────────────────── */
+@layer components {
+  /* Glassmorphism card effect */
+  .glass {
+    @apply bg-surface-800/60 backdrop-blur-xl border border-surface-700/50;
+  }
+
+  .glass-strong {
+    @apply bg-surface-800/80 backdrop-blur-2xl border border-surface-700/60;
+  }
+
+  /* Neon glow border for accent cards */
+  .glow-border-blue {
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3),
+                0 0 15px -3px rgba(59, 130, 246, 0.2);
+  }
+
+  .glow-border-green {
+    box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3),
+                0 0 15px -3px rgba(16, 185, 129, 0.2);
+  }
+
+  .glow-border-amber {
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.3),
+                0 0 15px -3px rgba(245, 158, 11, 0.2);
+  }
+
+  .glow-border-red {
+    box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.3),
+                0 0 15px -3px rgba(239, 68, 68, 0.2);
+  }
+
+  /* Gradient text helper */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-neon-blue via-blue-400 to-cyan-400;
+  }
+
+  /* Primary button with glow on hover */
+  .btn-primary {
+    @apply relative px-6 py-3 rounded-xl font-semibold text-white
+           bg-neon-blue hover:bg-blue-600
+           transition-all duration-300 ease-out
+           hover:shadow-[0_0_25px_rgba(59,130,246,0.5)]
+           active:scale-[0.97];
+  }
+
+  .btn-danger {
+    @apply relative px-6 py-3 rounded-xl font-semibold text-white
+           bg-neon-red hover:bg-red-600
+           transition-all duration-300 ease-out
+           hover:shadow-[0_0_25px_rgba(239,68,68,0.5)]
+           active:scale-[0.97];
+  }
+
+  .btn-ghost {
+    @apply px-4 py-2 rounded-lg font-medium text-slate-300
+           hover:text-white hover:bg-surface-700/50
+           transition-all duration-200;
+  }
+
+  /* Input field styling */
+  .input-field {
+    @apply w-full px-4 py-3 rounded-xl
+           bg-surface-900/80 border border-surface-700
+           text-slate-100 placeholder-slate-500
+           focus:outline-none focus:border-neon-blue focus:ring-1 focus:ring-neon-blue/50
+           transition-all duration-200;
+  }
+}
+
+/* ── Utility classes ──────────────────────────────────────────────── */
+@layer utilities {
+  /* Live indicator pulse */
+  .pulse-live {
+    animation: pulseLive 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulseLive {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  /* Number flip animation for countdown */
+  .flip-number {
+    animation: flipIn 0.3s ease-out;
+  }
+
+  @keyframes flipIn {
+    0% { transform: scaleY(0.4); opacity: 0.3; }
+    100% { transform: scaleY(1); opacity: 1; }
+  }
+
+  /* Subtle floating effect */
+  .float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+
+  /* Celebration confetti dots */
+  .confetti-dot {
+    animation: confetti 1.5s ease-out forwards;
+  }
+
+  @keyframes confetti {
+    0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(-100px) rotate(720deg); opacity: 0; }
+  }
+}
