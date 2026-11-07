@@ -1,7 +1,7 @@
 /**
  * Redis client configuration with transparent In-Memory Fallback.
  *
- * If Redis is running on localhost:6379, standard ioredis connects and loads Lua scripts.
+ * If Redis is running, standard ioredis connects and loads Lua scripts.
  * If Redis is offline, an in-memory atomic reservation engine takes over with
  * exact mutex locking, sub-millisecond execution, and TTL expiration.
  */
@@ -13,6 +13,43 @@ import { env } from './env';
 import { logger } from '../utils/logger';
 
 export let isInMemoryRedis = false;
+
+export const RESERVE_STOCK_LUA = `
+local stockKey = KEYS[1]
+local userKey = KEYS[2]
+local quantity = tonumber(ARGV[1])
+local maxPerUser = tonumber(ARGV[2])
+local ttl = tonumber(ARGV[3])
+
+local userReservation = redis.call('GET', userKey)
+if userReservation then
+    return -2
+end
+
+local currentStock = tonumber(redis.call('GET', stockKey) or 0)
+if currentStock < quantity then
+    return -1
+end
+
+local newStock = currentStock - quantity
+redis.call('SET', stockKey, newStock)
+redis.call('SET', userKey, quantity, 'EX', ttl)
+
+return newStock
+`;
+
+export const RELEASE_STOCK_LUA = `
+local stockKey = KEYS[1]
+local userKey = KEYS[2]
+local quantity = tonumber(ARGV[1])
+
+redis.call('DEL', userKey)
+local currentStock = tonumber(redis.call('GET', stockKey) or 0)
+local newStock = currentStock + quantity
+redis.call('SET', stockKey, newStock)
+
+return newStock
+`;
 
 // ── In-Memory Key-Value & Atomic Lua Emulator ──────────────────────────
 const memStore = new Map<string, { val: string; expiresAt?: number }>();
@@ -98,7 +135,7 @@ const realRedis = new Redis({
   lazyConnect: true,
   enableOfflineQueue: false,
   maxRetriesPerRequest: 1,
-  retryStrategy: () => null, // Don't hang trying to reconnect if offline
+  retryStrategy: () => null,
 });
 
 realRedis.on('error', (err) => {
@@ -140,28 +177,20 @@ export const redis: any = new Proxy({}, {
 // Alias for files importing redisClient
 export const redisClient = redis;
 
-export function loadLuaScript(
-  commandName: string,
-  scriptPath: string,
-  numberOfKeys: number
-): void {
-  try {
-    const absolutePath = path.resolve(scriptPath);
-    const script = fs.readFileSync(absolutePath, 'utf-8');
-    if (!isInMemoryRedis && typeof realRedis.defineCommand === 'function') {
-      realRedis.defineCommand(commandName, {
-        lua: script,
-        numberOfKeys,
-      });
-      logger.info(`Lua script loaded: ${commandName}`, { path: absolutePath });
-    }
-  } catch (err: any) {
-    logger.warn(`Could not load Lua script to native Redis (in-memory handles it): ${commandName}`);
-  }
-}
-
 export function loadAllLuaScripts(): void {
-  const luaDir = path.join(__dirname, '..', 'redis', 'lua');
-  loadLuaScript('reserveStock', path.join(luaDir, 'reserveStock.lua'), 2);
-  loadLuaScript('releaseStock', path.join(luaDir, 'releaseStock.lua'), 2);
+  if (!isInMemoryRedis && typeof realRedis.defineCommand === 'function') {
+    try {
+      realRedis.defineCommand('reserveStock', {
+        lua: RESERVE_STOCK_LUA,
+        numberOfKeys: 2,
+      });
+      realRedis.defineCommand('releaseStock', {
+        lua: RELEASE_STOCK_LUA,
+        numberOfKeys: 2,
+      });
+      logger.info('Lua scripts loaded into Redis successfully');
+    } catch (err: any) {
+      logger.warn('Could not register Lua scripts into native Redis:', err.message);
+    }
+  }
 }
