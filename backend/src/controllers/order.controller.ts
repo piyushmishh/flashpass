@@ -1,6 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { orderService } from '../services/order.service';
+import { eventRepository } from '../repositories/event.repository';
+import { ticketService } from '../services/ticket.service';
+import { pdfService } from '../services/pdf.service';
 import { StockWebSocketServer } from '../websocket/stockUpdates';
+import { NotFoundError, ForbiddenError } from '../utils/errors';
 
 export class OrderController {
   static async reserve(req: any, res: Response, next: NextFunction) {
@@ -84,6 +88,41 @@ export class OrderController {
         success: true,
         data: order
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/orders/:orderId/ticket
+   * Returns a self-contained HTML ticket page with an embedded QR code.
+   */
+  static async getTicketHTML(req: any, res: Response, next: NextFunction) {
+    try {
+      const { orderId } = req.params;
+      const userId = req.user?.id || 'demo-user-id';
+
+      const order = await orderService.getOrderById(orderId);
+
+      if (order.user_id !== userId) {
+        throw new ForbiddenError('This order belongs to another user');
+      }
+
+      const event = await eventRepository.findById(order.event_id);
+      if (!event) {
+        throw new NotFoundError('Event', order.event_id);
+      }
+
+      const qrPayload = ticketService.generateQRPayload(
+        order.id,
+        order.event_id,
+        order.user_id
+      );
+
+      const html = pdfService.generateTicketHTML(order, event, qrPayload);
+
+      res.setHeader('Content-Type', 'text/html');
+      return res.send(html);
     } catch (error) {
       next(error);
     }
