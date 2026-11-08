@@ -18,7 +18,7 @@ export const App: React.FC = () => {
 
   return (
     <AuthProvider>
-      <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans selection:bg-blue-500 selection:text-white">
+      <div className="min-h-screen bg-[#08090E] text-slate-100 flex flex-col font-sans selection:bg-purple-500 selection:text-white">
         <Navbar />
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-16">
           <AnimatePresence mode="wait">

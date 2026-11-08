@@ -8,6 +8,12 @@
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    background-color: #08090E;
+    color: #F1F5F9;
+  }
+
+  body {
+    background-color: #08090E;
   }
 
   /* Sleek custom scrollbar for the whole app */
@@ -16,20 +22,20 @@
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #0F172A;
+    background: #08090E;
   }
   ::-webkit-scrollbar-thumb {
-    background: #334155;
+    background: #1E2235;
     border-radius: 999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #475569;
+    background: #2D334E;
   }
 
   /* Firefox scrollbar */
   * {
     scrollbar-width: thin;
-    scrollbar-color: #334155 #0F172A;
+    scrollbar-color: #1E2235 #08090E;
   }
 }
 
