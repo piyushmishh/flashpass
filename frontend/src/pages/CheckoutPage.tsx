@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { PaymentForm } from '../components/PaymentForm';
+import { CheckoutSkeleton } from '../components/Skeleton';
 import { Order } from '../types';
 
 export const CheckoutPage: React.FC = () => {
@@ -53,7 +54,7 @@ export const CheckoutPage: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="h-96 flex items-center justify-center text-slate-400">Loading checkout session...</div>;
+    return <CheckoutSkeleton />;
   }
 
   if (!order) {

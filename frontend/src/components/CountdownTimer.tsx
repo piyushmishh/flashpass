@@ -4,6 +4,8 @@
  */
 
 import { useCountdown } from '@/hooks/useCountdown';
+import { playTick } from '@/hooks/useSound';
+import { useEffect, useRef } from 'react';
 import clsx from 'clsx';
 
 interface Props {
@@ -20,6 +22,15 @@ export function CountdownTimer({ targetDate, dropTime, label, compact }: Props) 
 
   // Under 60 seconds — red urgency
   const isUrgent = !isExpired && totalSeconds < 60;
+
+  // Tick sound when urgent
+  const prevSecondsRef = useRef(seconds);
+  useEffect(() => {
+    if (isUrgent && seconds !== prevSecondsRef.current) {
+      playTick();
+    }
+    prevSecondsRef.current = seconds;
+  }, [seconds, isUrgent]);
 
   if (isExpired) {
     return (
