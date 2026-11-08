@@ -83,12 +83,17 @@ export const events = {
 /* ── Orders ──────────────────────────────────────────────────────── */
 
 export const orders = {
-  reserve: (eventId: string, quantity: number, idempotencyKey: string) =>
+  reserve: (eventId: string, quantity: number, idempotencyKey: string, powHeaders?: { nonce: string; hash: string; challenge: string }) =>
     request<{ order: Order; remainingStock: number }>(`/events/${eventId}/reserve`, {
       method: 'POST',
       body: JSON.stringify({ quantity }),
       headers: {
         'X-Idempotency-Key': idempotencyKey,
+        ...(powHeaders ? {
+          'x-pow-nonce': powHeaders.nonce,
+          'x-pow-hash': powHeaders.hash,
+          'x-pow-challenge': powHeaders.challenge,
+        } : {}),
       },
     }),
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { api } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -7,7 +8,17 @@ import { useCountdown } from '../hooks/useCountdown';
 import { CountdownTimer } from '../components/CountdownTimer';
 import { LiveStockBadge } from '../components/LiveStockBadge';
 import { QueueStatus } from '../components/QueueStatus';
+import { SeatMap } from '../components/SeatMap';
+import { ProofOfWork } from '../components/ProofOfWork';
+import { EventPageSkeleton } from '../components/Skeleton';
+import { playClick, playReserved } from '../hooks/useSound';
 import { Event } from '../types';
+
+interface PowSolution {
+  nonce: string;
+  hash: string;
+  challenge: string;
+}
 
 export const EventPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +30,8 @@ export const EventPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [queueStep, setQueueStep] = useState<'locking' | 'reserved' | 'redirecting' | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [selectedZone, setSelectedZone] = useState<string | null>(null);
+  const [powSolution, setPowSolution] = useState<PowSolution | null>(null);
 
   const { currentStock } = useWebSocket(id || '');
 
@@ -44,6 +57,12 @@ export const EventPage: React.FC = () => {
   const displayStock = currentStock !== null ? currentStock : (event?.current_stock ?? 0);
   const isSoldOut = displayStock <= 0;
 
+  const handleZoneSelect = (zone: string) => {
+    playClick();
+    setSelectedZone(zone === selectedZone ? null : zone);
+    setQuantity(1);
+  };
+
   const handleReserve = async () => {
     if (!isAuthenticated) {
       navigate('/login');
@@ -55,12 +74,16 @@ export const EventPage: React.FC = () => {
     setQueueStep('locking');
 
     try {
-      // Simulate quick visual step for queue demo
       setTimeout(() => setQueueStep('reserved'), 400);
 
       const idempotencyKey = `user-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-      const result = await api.orders.reserve(id, quantity, idempotencyKey);
+      const powHeaders = powSolution
+        ? { nonce: powSolution.nonce, hash: powSolution.hash, challenge: powSolution.challenge }
+        : undefined;
 
+      const result = await api.orders.reserve(id, quantity, idempotencyKey, powHeaders);
+
+      playReserved();
       setQueueStep('redirecting');
       setTimeout(() => {
         navigate(`/checkout/${result.order.id}`);
@@ -72,7 +95,7 @@ export const EventPage: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="h-96 flex items-center justify-center text-slate-400">Loading Drop Parameters...</div>;
+    return <EventPageSkeleton />;
   }
 
   if (!event) {
@@ -82,7 +105,12 @@ export const EventPage: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto space-y-8 py-8">
       {/* Event Header Banner */}
-      <div className="relative rounded-3xl overflow-hidden border border-slate-700/80 bg-slate-900 shadow-2xl">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="relative rounded-3xl overflow-hidden border border-slate-700/80 bg-slate-900 shadow-2xl"
+      >
         <div className="h-64 bg-gradient-to-r from-blue-900 via-indigo-900 to-purple-950 flex items-center px-8 relative">
           <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-xs" />
           <div className="relative z-10 space-y-2">
@@ -98,8 +126,8 @@ export const EventPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Live Counters */}
         <div className="p-8 space-y-8 bg-slate-900/90 backdrop-blur-md">
+          {/* Countdown & Stock */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
             <div>
               <span className="text-xs font-mono uppercase text-slate-400 tracking-wider block mb-2">
@@ -107,7 +135,6 @@ export const EventPage: React.FC = () => {
               </span>
               <CountdownTimer dropTime={dropTime} />
             </div>
-
             <div className="bg-slate-800/60 p-5 rounded-2xl border border-slate-700/60">
               <span className="text-xs font-mono uppercase text-slate-400 tracking-wider block mb-2">
                 Live Inventory Status
@@ -116,13 +143,40 @@ export const EventPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Arena Seat Map */}
+          {isDropLive && !isSoldOut && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              transition={{ duration: 0.4 }}
+            >
+              <span className="text-xs font-mono uppercase text-slate-400 tracking-wider block mb-3">
+                Select Your Zone
+              </span>
+              <SeatMap
+                onZoneSelect={handleZoneSelect}
+                selectedZone={selectedZone}
+              />
+            </motion.div>
+          )}
+
+          {/* PoW Challenge */}
+          {isDropLive && !isSoldOut && (
+            <ProofOfWork onSolved={setPowSolution} />
+          )}
+
+          {/* Price & Reserve */}
           <div className="border-t border-slate-800 pt-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="text-2xl font-black text-white">
                 ₹{((event.price_cents ?? (event.price ? event.price * 100 : 499900)) / 100).toLocaleString('en-IN')}
                 <span className="text-xs text-slate-400 font-normal ml-2">/ pass</span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">Maximum 2 tickets per authenticated user</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {selectedZone
+                  ? `Zone: ${selectedZone.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase())} • Max 2 per user`
+                  : 'Maximum 2 tickets per authenticated user'}
+              </p>
             </div>
 
             <div className="flex items-center space-x-4">
@@ -130,7 +184,7 @@ export const EventPage: React.FC = () => {
                 {[1, 2].map((num) => (
                   <button
                     key={num}
-                    onClick={() => setQuantity(num)}
+                    onClick={() => { playClick(); setQuantity(num); }}
                     disabled={!isDropLive || isSoldOut}
                     className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
                       quantity === num
@@ -143,31 +197,40 @@ export const EventPage: React.FC = () => {
                 ))}
               </div>
 
-              <button
+              <motion.button
+                whileTap={{ scale: 0.97 }}
                 onClick={handleReserve}
-                disabled={!isDropLive || isSoldOut || queueStep !== null}
+                disabled={!isDropLive || isSoldOut || queueStep !== null || !powSolution}
                 className={`px-8 py-3.5 rounded-xl font-bold text-white transition shadow-lg ${
                   isSoldOut
                     ? 'bg-slate-800 cursor-not-allowed opacity-50'
                     : !isDropLive
                     ? 'bg-slate-800 cursor-not-allowed opacity-60'
+                    : !powSolution
+                    ? 'bg-slate-800 cursor-not-allowed opacity-60'
                     : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-500/25'
                 }`}
               >
-                {isSoldOut ? 'Sold Out' : !isDropLive ? 'Drop Starts Soon' : '⚡ Instant Reserve'}
-              </button>
+                {isSoldOut ? 'Sold Out' : !isDropLive ? 'Drop Starts Soon' : !powSolution ? 'Solving Challenge...' : '⚡ Instant Reserve'}
+              </motion.button>
             </div>
           </div>
 
           {queueStep && <QueueStatus step={queueStep} />}
 
           {errorMsg && (
-            <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 text-sm">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 text-sm"
+            >
               {errorMsg}
-            </div>
+            </motion.div>
           )}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };
+
+export default EventPage;

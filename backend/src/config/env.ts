@@ -55,4 +55,7 @@ export const env = {
   // Business rules
   RESERVATION_TTL_SECONDS: parseInt(process.env.RESERVATION_TTL_SECONDS || '600', 10), // 10 min
   MAX_TICKETS_PER_USER: parseInt(process.env.MAX_TICKETS_PER_USER || '2', 10),
+
+  // Proof-of-Work
+  POW_DIFFICULTY: parseInt(process.env.POW_DIFFICULTY || '4', 10),
 } as const;
