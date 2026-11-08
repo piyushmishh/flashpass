@@ -20,6 +20,8 @@ import authRoutes from './routes/auth.routes';
 import eventRoutes from './routes/event.routes';
 import orderRoutes, { eventReservationRouter } from './routes/order.routes';
 import adminRoutes from './routes/admin.routes';
+import powRoutes from './routes/pow.routes';
+import ticketRoutes from './routes/ticket.routes';
 
 const app = express();
 const server = http.createServer(app);
@@ -49,6 +51,8 @@ app.use('/api/events', eventReservationRouter); // for /api/events/:eventId/rese
 app.use('/api/events', eventRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/pow', powRoutes);
+app.use('/api/tickets', ticketRoutes);
 
 // Root health probe
 app.get('/health', (_req, res) => res.json({ status: 'ok', time: new Date() }));
